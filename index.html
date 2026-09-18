@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Калькулятор</title>
+  <style>
+    :root {
+      --bg: #eef0f4;
+      --panel: #ffffff;
+      --text: #1d2230;
+      --muted: #7a8196;
+      --key: #f3f4f8;
+      --key-hover: #e6e8ef;
+      --fn: #dfe2ea;
+      --op: #ff9f1c;
+      --op-text: #ffffff;
+      --shadow: 0 20px 50px rgba(20, 30, 60, .15);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12141a;
+        --panel: #1c1f27;
+        --text: #f1f3f8;
+        --muted: #8d93a5;
+        --key: #2a2e39;
+        --key-hover: #353a47;
+        --fn: #3a3f4d;
+        --shadow: 0 20px 50px rgba(0, 0, 0, .5);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+    }
+    .calc {
+      width: 100%;
+      max-width: 340px;
+      background: var(--panel);
+      border-radius: 24px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .display {
+      padding: 12px 8px 20px;
+      text-align: right;
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      overflow: hidden;
+    }
+    .expr {
+      font-size: 22px;
+      word-break: break-all;
+      min-height: 30px;
+    }
+    .result {
+      margin-top: 6px;
+      font-size: 40px;
+      font-weight: 600;
+      word-break: break-all;
+      min-height: 48px;
+    }
+    .result.preview { color: var(--muted); font-size: 24px; font-weight: 400; }
+    .result.error { color: #e5484d; }
+    .keys {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    button {
+      font: inherit;
+      font-size: 22px;
+      height: 64px;
+      border: none;
+      border-radius: 16px;
+      background: var(--key);
+      color: var(--text);
+      cursor: pointer;
+      transition: background .12s, transform .06s;
+    }
+    button:hover { background: var(--key-hover); }
+    button:active, button.pressed { transform: scale(.95); }
+    button.fn { background: var(--fn); }
+    button.op { background: var(--op); color: var(--op-text); font-size: 26px; }
+    button.op:hover { filter: brightness(1.08); }
+    button.zero { grid-column: span 2; }
+  </style>
+</head>
+<body>
+  <main class="calc">
+    <div class="display" aria-live="polite">
+      <div class="expr" id="expr"></div>
+      <div class="result" id="result">0</div>
+    </div>
+    <div class="keys">
+      <button class="fn" data-action="clear">AC</button>
+      <button class="fn" data-action="back" aria-label="Стереть">⌫</button>
+      <button class="fn" data-action="percent">%</button>
+      <button class="op" data-op="/">÷</button>
+
+      <button data-digit="7">7</button>
+      <button data-digit="8">8</button>
+      <button data-digit="9">9</button>
+      <button class="op" data-op="*">×</button>
+
+      <button data-digit="4">4</button>
+      <button data-digit="5">5</button>
+      <button data-digit="6">6</button>
+      <button class="op" data-op="-">−</button>
+
+      <button data-digit="1">1</button>
+      <button data-digit="2">2</button>
+      <button data-digit="3">3</button>
+      <button class="op" data-op="+">+</button>
+
+      <button class="fn" data-action="negate">±</button>
+      <button data-digit="0">0</button>
+      <button data-action="dot">,</button>
+      <button class="op" data-action="equals">=</button>
+    </div>
+  </main>
+
+  <script>
+    const OPS = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+    const MAX_DIGITS = 15;
+
+    const exprEl = document.getElementById('expr');
+    const resultEl = document.getElementById('result');
+
+    // Выражение хранится как массив токенов: числа (строки) и операторы.
+    let tokens = [];
+    let justEvaluated = false;
+
+    const isOp = t => t in OPS;
+    const last = () => tokens[tokens.length - 1];
+    const lastIsNumber = () => tokens.length > 0 && !isOp(last());
+
+    function inputDigit(d) {
+      if (justEvaluated) { tokens = []; justEvaluated = false; }
+      if (!lastIsNumber()) { tokens.push(d); return; }
+      const n = last();
+      if (n.replace(/[-.]/g, '').length >= MAX_DIGITS) return;
+      if (n === '0') tokens[tokens.length - 1] = d;
+      else if (n === '-0') tokens[tokens.length - 1] = '-' + d;
+      else tokens[tokens.length - 1] = n + d;
+    }
+
+    function inputDot() {
+      if (justEvaluated) { tokens = []; justEvaluated = false; }
+      if (!lastIsNumber()) { tokens.push('0.'); return; }
+      if (!last().includes('.')) tokens[tokens.length - 1] += '.';
+    }
+
+    function inputOp(op) {
+      justEvaluated = false;
+      if (tokens.length === 0) tokens.push('0');
+      if (isOp(last())) tokens[tokens.length - 1] = op;
+      else tokens.push(op);
+    }
+
+    function negate() {
+      justEvaluated = false;
+      if (!lastIsNumber()) return;
+      const n = last();
+      tokens[tokens.length - 1] = n.startsWith('-') ? n.slice(1) : '-' + n;
+    }
+
+    function percent() {
+      justEvaluated = false;
+      if (!lastIsNumber()) return;
+      tokens[tokens.length - 1] = format(parseFloat(last()) / 100);
+    }
+
+    function backspace() {
+      if (justEvaluated) { tokens = []; justEvaluated = false; return; }
+      if (tokens.length === 0) return;
+      if (isOp(last())) { tokens.pop(); return; }
+      const n = last().slice(0, -1);
+      if (n === '' || n === '-') tokens.pop();
+      else tokens[tokens.length - 1] = n;
+    }
+
+    function clearAll() {
+      tokens = [];
+      justEvaluated = false;
+    }
+
+    // Вычисление с учётом приоритета: сначала × и ÷, затем + и −.
+    function evaluate(list) {
+      const t = [...list];
+      if (t.length && isOp(t[t.length - 1])) t.pop();
+      if (t.length === 0) return 0;
+
+      const stack = [parseFloat(t[0])];
+      for (let i = 1; i < t.length; i += 2) {
+        const op = t[i];
+        const num = parseFloat(t[i + 1]);
+        if (op === '*') stack.push(stack.pop() * num);
+        else if (op === '/') {
+          if (num === 0) throw new Error('Деление на ноль');
+          stack.push(stack.pop() / num);
+        }
+        else if (op === '+') stack.push(num);
+        else stack.push(-num);
+      }
+      const sum = stack.reduce((a, b) => a + b, 0);
+      if (!isFinite(sum)) throw new Error('Слишком большое число');
+      return sum;
+    }
+
+    // Убираем артефакты плавающей точки (0.1 + 0.2 = 0.3).
+    function format(n) {
+      const s = String(parseFloat(n.toPrecision(12)));
+      return s === '-0' ? '0' : s;
+    }
+
+    function pretty(tok) {
+      if (isOp(tok)) return ` ${OPS[tok]} `;
+      const [int, frac] = tok.split('.');
+      const sign = int.startsWith('-') ? '−' : '';
+      const digits = int.replace('-', '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+      return sign + digits + (frac !== undefined ? ',' + frac : '');
+    }
+
+    function equals() {
+      if (tokens.length === 0) return;
+      try {
+        const res = format(evaluate(tokens));
+        exprEl.textContent = tokens.map(pretty).join('') + ' =';
+        tokens = [res];
+        justEvaluated = true;
+        render(true);
+      } catch (e) {
+        exprEl.textContent = tokens.map(pretty).join('');
+        resultEl.textContent = e.message;
+        resultEl.className = 'result error';
+        tokens = [];
+        justEvaluated = true;
+      }
+    }
+
+    function render(afterEquals = false) {
+      resultEl.className = 'result';
+      if (afterEquals) {
+        resultEl.textContent = pretty(tokens[0]);
+        return;
+      }
+      exprEl.textContent = tokens.map(pretty).join('');
+      if (tokens.length === 0) {
+        exprEl.textContent = '';
+        resultEl.textContent = '0';
+        return;
+      }
+      // Предпросмотр результата, пока выражение набирается.
+      try {
+        const hasOp = tokens.some(isOp);
+        resultEl.textContent = hasOp ? '= ' + pretty(format(evaluate(tokens))) : '';
+        resultEl.className = 'result preview';
+      } catch {
+        resultEl.textContent = '';
+      }
+    }
+
+    function handle({ digit, op, action }) {
+      if (digit !== undefined) inputDigit(digit);
+      else if (op) inputOp(op);
+      else if (action === 'dot') inputDot();
+      else if (action === 'clear') clearAll();
+      else if (action === 'back') backspace();
+      else if (action === 'negate') negate();
+      else if (action === 'percent') percent();
+      else if (action === 'equals') { equals(); return; }
+      render();
+    }
+
+    document.querySelector('.keys').addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (btn) handle(btn.dataset);
+    });
+
+    const KEYMAP = {
+      '+': { op: '+' }, '-': { op: '-' }, '*': { op: '*' }, '/': { op: '/' },
+      '.': { action: 'dot' }, ',': { action: 'dot' },
+      'Enter': { action: 'equals' }, '=': { action: 'equals' },
+      'Backspace': { action: 'back' }, 'Escape': { action: 'clear' },
+      'Delete': { action: 'clear' }, '%': { action: 'percent' },
+    };
+
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const cmd = /^\d$/.test(e.key) ? { digit: e.key } : KEYMAP[e.key];
+      if (!cmd) return;
+      e.preventDefault();
+      handle(cmd);
+
+      const sel = cmd.digit !== undefined ? `[data-digit="${cmd.digit}"]`
+        : cmd.op ? `[data-op="${cmd.op}"]` : `[data-action="${cmd.action}"]`;
+      const btn = document.querySelector(sel);
+      if (btn) {
+        btn.classList.add('pressed');
+        setTimeout(() => btn.classList.remove('pressed'), 100);
+      }
+    });
+  </script>
+</body>
+</html>
